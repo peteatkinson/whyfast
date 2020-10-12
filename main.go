@@ -21,7 +21,7 @@ func init() {
 
 func main() {
 	if token == "" {
-		fmt.Println("No token provided. Please run: whyfast -t <bot token>")
+		fmt.Println("No token provided. Please run: go run main.go -t <bot token>")
 		return
 	}
 
