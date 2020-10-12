@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"flag"
+	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"github.com/peteratkinson/whyfast/utils"
+	"log"
+	"os"
+	"os/signal"
 	"strings"
 	"syscall"
-	"os/signal"
-	"os"
-	"log"
-	"github.com/bwmarrin/discordgo"
 )
 
 var token string
@@ -17,7 +18,6 @@ func init() {
 	flag.StringVar(&token, "t", "", "Bot Token")
 	flag.Parse()
 }
-
 
 func main() {
 	if token == "" {
@@ -37,29 +37,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	err = utils.LoadSound()
+	if err != nil {
+		fmt.Println("Could not load .dca file")
+	}
+
 	fmt.Println("Bot is now running")
 
 	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill) 
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
 	// close down the bot session
 	bot.Close()
 
-}
-
-func voiceStateUpdated(s *discordgo.Session, v *discordgo.VoiceStateUpdate) {
-	if v.UserID == s.State.User.ID {
-		return
-	}
-
-	var hasRole bool
-	hasRole = checkRoleStatus(s, v.GuildID, v.UserID, "WhyFast")
-	if !hasRole {
-		fmt.Println(hasRole)
-		return
-	}
-	return
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -76,10 +67,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if args[0] != "!whyfast" {
 		return
 	} else {
-		fmt.Println(s)
-		fmt.Println(m)
-
-
 		c, err := s.State.Channel(m.ChannelID)
 
 		if err != nil {
@@ -88,42 +75,48 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		guild, err := s.State.Guild(c.GuildID)
 
-		if err != nil {
+		if err != nil || guild == nil {
 			return
 		}
 
+		// find guild the user is currently in
+		g, err := guildFromMessage(m, s)
 
-		if len(guild.VoiceStates) == 0 {
-			fmt.Println("No voice channels to connect to")
-		}
+		if g != nil {
+			// find the channel the user is currently in
+			cId, err := findUserChannel(m, s)
 
-		for _, vs := range guild.VoiceStates {
-			if vs.UserID == m.Author.ID {
-				fmt.Println("Playing sound")
+			// if the user is in a voicer channel then play the sound in that channel
+			if err == nil {
+				err = utils.PlaySound(s, g.ID, cId)
 			}
-			return
 		}
 	}
 }
 
-func checkRoleStatus(s * discordgo.Session, guildId string, userId string, role string) bool {
-	member, err := s.GuildMember(guildId, userId)
-
+func findUserChannel(m *discordgo.MessageCreate, s *discordgo.Session) (string, error) {
+	// find the voice channel the user is in
+	g, err := guildFromMessage(m, s)
 	if err != nil {
-		return false
+		return "", err
 	}
 
-	for r := range member.Roles {
-		if member.Roles[r] == role {
-			return true
-		} 
+	for _, vstate := range g.VoiceStates {
+		if vstate.UserID == m.Author.ID {
+			return vstate.ChannelID, nil
+		}
 	}
-
-	return false
+	return "", fmt.Errorf("User is not in a voice channel")
 }
 
-func guildLeave() {
-
+func guildFromMessage(m *discordgo.MessageCreate, s *discordgo.Session) (*discordgo.Guild, error) {
+	c, err := s.State.Channel(m.Message.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+	g, err := s.State.Guild(c.GuildID)
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
 }
-
-

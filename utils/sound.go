@@ -1,17 +1,17 @@
-package whyfast
+package utils
 
 import (
-	"fmt"
-	"time"
-	"os"
 	"encoding/binary"
-	"io"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"io"
+	"os"
+	"time"
 )
 
 var buffer = make([][]byte, 0)
 
-func playSound(s *discordgo.Session, guildId, channelId string) (err error) {
+func PlaySound(s *discordgo.Session, guildId, channelId string) (err error) {
 	vc, err := s.ChannelVoiceJoin(guildId, channelId, false, false)
 	if err != nil {
 		return err
@@ -35,18 +35,21 @@ func playSound(s *discordgo.Session, guildId, channelId string) (err error) {
 	return nil
 }
 
-func loadSound(soundEffect *string) error {
-	file, err := os.Open("")
+func LoadSound() error {
+	file, err := os.Open("./sounds/why_you_coming_fast.dca")
 
 	if err != nil {
-		fmt.Println("Error opening dca file :", err)
+		fmt.Println("Error opening dca file:", err)
 		return err
 	}
 
 	var opuslen int16
-	for {
-		err := binary.Read(file, binary.LittleEndian, &opuslen)
 
+	for {
+		// read opus frame length
+		err = binary.Read(file, binary.LittleEndian, &opuslen)
+
+		// if EOF, return
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			err := file.Close()
 			if err != nil {
@@ -56,19 +59,21 @@ func loadSound(soundEffect *string) error {
 		}
 
 		if err != nil {
-			fmt.Println("Error reading from dca file : ", err)
-		}
-
-		inBuffer := make([]byte, opuslen)
-
-		err = binary.Read(file, binary.LittleEndian, &inBuffer)
-
-		if err != nil {
-			fmt.Println("Error reading from dca file : ", err)
+			fmt.Println("Error reading from dca file:", err)
 			return err
 		}
 
-		buffer = append(buffer, inBuffer)
-	}
+		if opuslen > 0 {
+			// Read encoded pcm from dca
+			InBuf := make([]byte, opuslen)
+			err = binary.Read(file, binary.LittleEndian, &InBuf)
+			// Not EOF
+			if err != nil {
+				fmt.Println("Error reading from dca file:", err)
+				return err
+			}
 
+			buffer = append(buffer, InBuf)
+		}
+	}
 }
